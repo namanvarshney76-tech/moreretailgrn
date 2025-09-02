@@ -98,11 +98,11 @@ class MoreRetailAutomation:
             return False
         return True
     
-    def authenticate_from_secrets(self, progress_queue: queue.Queue):
+    def authenticate_from_secrets(self, progress_bar, status_text, progress_queue: queue.Queue):
         """Authenticate using Streamlit secrets with web-based OAuth flow"""
         try:
-            progress_queue.put({'type': 'status', 'text': "Starting authentication..."})
-            progress_queue.put({'type': 'progress', 'value': 10})
+            status_text.text("Authenticating with Google APIs...")
+            progress_bar.progress(10)
             
             # Check for existing token in session state
             if 'oauth_token' in st.session_state:
@@ -110,13 +110,13 @@ class MoreRetailAutomation:
                     combined_scopes = list(set(self.gmail_scopes + self.drive_scopes + self.sheets_scopes))
                     creds = Credentials.from_authorized_user_info(st.session_state.oauth_token, combined_scopes)
                     if creds and creds.valid:
-                        progress_queue.put({'type': 'progress', 'value': 50})
+                        progress_bar.progress(50)
                         # Build services
                         self.gmail_service = build('gmail', 'v1', credentials=creds)
                         self.drive_service = build('drive', 'v3', credentials=creds)
                         self.sheets_service = build('sheets', 'v4', credentials=creds)
-                        progress_queue.put({'type': 'progress', 'value': 100})
-                        progress_queue.put({'type': 'success', 'text': "Authentication successful!"})
+                        progress_bar.progress(100)
+                        status_text.text("Authentication successful!")
                         self.authentication_complete = True
                         return True
                 except Exception as e:
@@ -148,14 +148,15 @@ class MoreRetailAutomation:
                         # Save credentials in session state
                         st.session_state.oauth_token = json.loads(creds.to_json())
                         
-                        progress_queue.put({'type': 'progress', 'value': 50})
+                        progress_bar.progress(50)
                         # Build services
                         self.gmail_service = build('gmail', 'v1', credentials=creds)
                         self.drive_service = build('drive', 'v3', credentials=creds)
                         self.sheets_service = build('sheets', 'v4', credentials=creds)
                         
-                        progress_queue.put({'type': 'progress', 'value': 100})
-                        progress_queue.put({'type': 'success', 'text': "Authentication successful!"})
+                        progress_bar.progress(100)
+                        status_text.text("Authentication successful!")
+                        
                         self.authentication_complete = True
                         
                         # Clear the code from URL
@@ -166,8 +167,10 @@ class MoreRetailAutomation:
                         return False
                 else:
                     # Show authorization link
-                    progress_queue.put({'type': 'auth_required', 'auth_url': auth_url})
-                    return False
+                    st.markdown("### Google Authentication Required")
+                    st.markdown(f"[Authorize with Google]({auth_url})")
+                    st.info("Click the link above to authorize, you'll be redirected back automatically")
+                    st.stop()
             else:
                 progress_queue.put({'type': 'error', 'text': "Google credentials missing in Streamlit secrets"})
                 return False
@@ -879,44 +882,27 @@ def main():
         auth_col1, auth_col2 = st.columns([2, 1])
         
         with auth_col1:
-            if not st.session_state.automation.authentication_complete:
+            if st.session_state.automation.authentication_complete:
+                st.success("✅ Authentication completed successfully!")
+            else:
                 st.warning("⚠️ Authentication required before running workflows")
                 auth_progress = st.progress(0)
                 auth_status = st.empty()
                 
-                if st.button("🔑 Authenticate with Google", type="primary"):
-                    # Start authentication
-                    auth_thread = threading.Thread(
-                        target=st.session_state.automation.authenticate_from_secrets,
-                        args=(st.session_state.workflow_state['queue'],)
-                    )
-                    auth_thread.start()
-                    
-                    # Wait for auth result
-                    while auth_thread.is_alive():
-                        time.sleep(0.1)
-                        st.rerun()
-                    
-                    # Check for auth messages
+                if st.session_state.automation.authenticate_from_secrets(auth_progress, auth_status, st.session_state.workflow_state['queue']):
+                    st.session_state.automation.authentication_complete = True
+                    st.session_state.workflow_state['authenticated'] = True
+                    st.rerun()
+                else:
                     while not st.session_state.workflow_state['queue'].empty():
                         msg = st.session_state.workflow_state['queue'].get()
-                        if msg['type'] == 'progress':
-                            auth_progress.progress(msg['value'])
-                        elif msg['type'] == 'status':
-                            auth_status.text(msg['text'])
-                        elif msg['type'] == 'success':
-                            st.success("✅ Authentication successful!")
-                            st.session_state.workflow_state['authenticated'] = True
-                            time.sleep(1)
-                            st.rerun()
-                        elif msg['type'] == 'auth_required':
-                            st.markdown("### Google Authentication Required")
-                            st.markdown(f"[🔗 Authorize with Google]({msg['auth_url']})")
-                            st.info("Click the link above to authorize, you'll be redirected back automatically")
-                        elif msg['type'] == 'error':
-                            st.error(f"❌ {msg['text']}")
-            else:
-                st.success("✅ Authentication completed successfully!")
+                        if msg['type'] == 'error':
+                            st.error(msg['text'])
+                        elif msg['type'] == 'info':
+                            st.info(msg['text'])
+                
+                if not st.session_state.automation.authentication_complete:
+                    st.stop()
         
         # Gmail Configuration
         st.subheader("📧 Gmail Settings")
