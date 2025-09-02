@@ -1,4 +1,3 @@
-
 #!/usr/bin/env python3
 """
 Streamlit App for More Retail Automation Workflows
@@ -518,7 +517,7 @@ class MoreRetailAutomation:
             return False
     
     def process_pdf_workflow(self, config: dict, progress_queue: queue.Queue):
-        """Process PDF workflow with LlamaParse, adapted from pdftoexcel.py"""
+        """Process PDF workflow with LlamaParse, appending data one PDF at a time"""
         stats = {
             'total_pdfs': 0,
             'processed_pdfs': 0,
@@ -579,8 +578,10 @@ class MoreRetailAutomation:
             # Get sheet info
             sheet_name = config['sheet_range'].split('!')[0]
             
-            all_rows = []
+            # Initialize headers
             existing_headers = self._get_sheet_headers(config['spreadsheet_id'], sheet_name, progress_queue)
+            headers = existing_headers or []
+            first_run = not bool(existing_headers)  # True if no headers exist (first run)
             
             for i, file in enumerate(pdf_files):
                 if file['id'] in self.processed_pdfs:
@@ -616,11 +617,48 @@ class MoreRetailAutomation:
                     
                     # Flatten data for Google Sheets
                     rows = self._flatten_json(extracted_data, file)
-                    if rows:
-                        all_rows.extend(rows)
+                    if not rows:
+                        progress_queue.put({'type': 'warning', 'text': f"No data extracted from {file['name']}"})
+                        logger.warning(f"[LLAMA] No data extracted from {file['name']}")
+                        stats['failed_pdfs'] += 1
+                        continue
+                    
+                    # Update headers with new fields
+                    new_keys = set()
+                    for row in rows:
+                        new_keys.update(row.keys())
+                    for key in new_keys:
+                        if key not in headers:
+                            headers.append(key)
+                    
+                    # Update headers in sheet if necessary
+                    if headers != existing_headers:
+                        self._update_headers(config['spreadsheet_id'], sheet_name, headers, progress_queue)
+                        existing_headers = headers.copy()
+                    
+                    # Prepare values for this PDF
+                    values = []
+                    if first_run:  # Include headers only on first run
+                        values.append(headers)
+                        first_run = False
+                    for row in rows:
+                        row_values = [row.get(h, "") for h in headers]
+                        values.append(row_values)
+                    
+                    # Append to Google Sheet
+                    success = self._append_to_google_sheet(config['spreadsheet_id'], sheet_name, values, progress_queue)
+                    if success:
                         stats['processed_pdfs'] += 1
+                        stats['rows_added'] += len(rows)
                         self.processed_pdfs.add(file['id'])
                         self._save_processed_state()
+                        progress_queue.put({'type': 'info', 'text': f"Successfully appended {len(rows)} rows from {file['name']} to Google Sheet"})
+                        logger.info(f"[SHEETS] Successfully appended {len(rows)} rows from {file['name']} to Google Sheet")
+                    else:
+                        progress_queue.put({'type': 'error', 'text': f"Failed to append rows from {file['name']} to Google Sheet"})
+                        logger.error(f"[ERROR] Failed to append rows from {file['name']} to Google Sheet")
+                        stats['failed_pdfs'] += 1
+                        continue
                     
                     progress = 40 + (i + 1) / len(pdf_files) * 55
                     progress_queue.put({'type': 'progress', 'value': int(progress)})
@@ -631,45 +669,6 @@ class MoreRetailAutomation:
                     progress_queue.put({'type': 'error', 'text': f"Failed to process PDF {file['name']}: {str(e)}"})
                     logger.error(f"[ERROR] Failed to process PDF {file['name']}: {str(e)}")
                     stats['failed_pdfs'] += 1
-            
-            # Prepare data for Google Sheets
-            if all_rows:
-                progress_queue.put({'type': 'info', 'text': f"Preparing {len(all_rows)} rows for Google Sheets"})
-                logger.info(f"[SHEETS] Preparing {len(all_rows)} rows for Google Sheets")
-                
-                # Get all unique keys to create comprehensive headers
-                all_keys = set()
-                for row in all_rows:
-                    all_keys.update(row.keys())
-                
-                # Use existing headers if available, otherwise create new ones
-                headers = existing_headers or list(all_keys)
-                for key in all_keys:
-                    if key not in headers:
-                        headers.append(key)
-                
-                # Update headers if necessary
-                if headers != existing_headers:
-                    self._update_headers(config['spreadsheet_id'], sheet_name, headers, progress_queue)
-                
-                # Convert to list of lists for Sheets API
-                values = []
-                if not existing_headers:  # First run - include headers
-                    values.append(headers)
-                
-                for row in all_rows:
-                    row_values = [row.get(h, "") for h in headers]
-                    values.append(row_values)
-                
-                # Append to Google Sheet
-                success = self._append_to_google_sheet(config['spreadsheet_id'], sheet_name, values, progress_queue)
-                if success:
-                    stats['rows_added'] = len(all_rows)
-                    progress_queue.put({'type': 'info', 'text': f"Successfully appended {len(all_rows)} rows to Google Sheet"})
-                    logger.info(f"[SHEETS] Successfully appended {len(all_rows)} rows to Google Sheet")
-                else:
-                    progress_queue.put({'type': 'error', 'text': "Failed to update Google Sheet"})
-                    logger.error("[ERROR] Failed to update Google Sheet")
             
             progress_queue.put({'type': 'progress', 'value': 100})
             progress_queue.put({'type': 'status', 'text': f"PDF workflow completed! Processed {stats['processed_pdfs']} PDFs, added {stats['rows_added']} rows, {stats['failed_pdfs']} failed"})
@@ -886,7 +885,7 @@ def main():
     if 'pdf_config' not in st.session_state:
         st.session_state.pdf_config = {
             'drive_folder_id': "1XHIFX-Gsb_Mx_AYjoi2NG1vMlvNE5CmQ",
-            'llama_api_key': "llx-rydBkEID3ERfozrkqiCPiJuyZDXtb78QzGl8RX2BxyO4KfM4",
+            'llama_api_key': "llx-VdPOUSqBA6ttxWwQHEcnPF6VRt71SIKezV0Pdqe7FiA3x4LK",
             'llama_agent': "More retail Agent",
             'spreadsheet_id': "16y9DAK2tVHgnZNnPeRoSSPPE2NcspW_qqMF8ZR8OOC0",
             'sheet_range': "mrgrn",
@@ -1123,4 +1122,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
