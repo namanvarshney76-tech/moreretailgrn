@@ -1,4 +1,4 @@
-```python
+
 #!/usr/bin/env python3
 """
 Streamlit App for More Retail Automation Workflows
@@ -1123,4 +1123,4 @@ def main():
 
 if __name__ == "__main__":
     main()
-```
+
