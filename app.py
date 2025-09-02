@@ -888,7 +888,7 @@ def main():
             'llama_api_key': "llx-VdPOUSqBA6ttxWwQHEcnPF6VRt71SIKezV0Pdqe7FiA3x4LK",
             'llama_agent': "More retail Agent",
             'spreadsheet_id': "16y9DAK2tVHgnZNnPeRoSSPPE2NcspW_qqMF8ZR8OOC0",
-            'sheet_range': "mrgrn",
+            'sheet_range': "mraws",
             'days_back': 1
         }
     
