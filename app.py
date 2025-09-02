@@ -886,7 +886,7 @@ def main():
     if 'pdf_config' not in st.session_state:
         st.session_state.pdf_config = {
             'drive_folder_id': "1C251csI1oOeX_skv7mfqpZB0NbyLLd9d",
-            'llama_api_key': "llx-MO0lw34A7DeYX1wij0V4NkLyfwDUmUsvdpmrthFH5yggsnmS",
+            'llama_api_key': "llx-rydBkEID3ERfozrkqiCPiJuyZDXtb78QzGl8RX2BxyO4KfM4",
             'llama_agent': "More retail Agent",
             'spreadsheet_id': "16y9DAK2tVHgnZNnPeRoSSPPE2NcspW_qqMF8ZR8OOC0",
             'sheet_range': "mrgrn",
