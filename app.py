@@ -66,7 +66,7 @@ class MoreRetailAutomation:
                     self.processed_emails = set(state.get('emails', []))
                     self.processed_pdfs = set(state.get('pdfs', []))
         except Exception as e:
-            pass
+            st.error(f"Failed to load processed state: {str(e)}")
     
     def _save_processed_state(self):
         """Save processed email and PDF IDs to file"""
@@ -78,7 +78,7 @@ class MoreRetailAutomation:
             with open(self.processed_state_file, 'w') as f:
                 json.dump(state, f)
         except Exception as e:
-            pass
+            st.error(f"Failed to save processed state: {str(e)}")
     
     def _check_memory(self, progress_queue: queue.Queue):
         """Check memory usage to prevent crashes"""
@@ -307,10 +307,12 @@ class MoreRetailAutomation:
             progress_queue.put({'type': 'progress', 'value': 100})
             progress_queue.put({'type': 'status', 'text': f"Gmail workflow completed! Processed {total_attachments} attachments from {processed_count} emails"})
             progress_queue.put({'type': 'done', 'result': {'success': True, 'processed': total_attachments, 'rows_appended': 0}})
+            progress_queue.put({'type': 'info', 'text': f"Sent done message with result: success=True, processed={total_attachments}, rows_appended=0"})
             
         except Exception as e:
             progress_queue.put({'type': 'error', 'text': f"Gmail workflow failed: {str(e)}"})
             progress_queue.put({'type': 'done', 'result': {'success': False, 'processed': 0, 'rows_appended': 0}})
+            progress_queue.put({'type': 'info', 'text': f"Sent done message with result: success=False, processed=0, rows_appended=0"})
     
     def _get_email_details(self, message_id: str, progress_queue: queue.Queue) -> Dict:
         """Get email details including sender and subject"""
@@ -493,8 +495,13 @@ class MoreRetailAutomation:
             
             # Setup LlamaParse
             os.environ["LLAMA_CLOUD_API_KEY"] = config['llama_api_key']
-            extractor = LlamaExtract()
-            agent = extractor.get_agent(name=config['llama_agent'])
+            try:
+                extractor = LlamaExtract()
+                agent = extractor.get_agent(name=config['llama_agent'])
+            except Exception as e:
+                progress_queue.put({'type': 'error', 'text': f"Failed to initialize LlamaParse: {str(e)}"})
+                progress_queue.put({'type': 'done', 'result': {'success': False, 'processed': 0, 'rows_appended': 0}})
+                return
             
             if agent is None:
                 progress_queue.put({'type': 'error', 'text': f"Could not find agent '{config['llama_agent']}'. Check LlamaParse dashboard."})
@@ -537,9 +544,14 @@ class MoreRetailAutomation:
                         temp_file.write(pdf_data)
                         temp_path = temp_file.name
                     
-                    result = agent.extract(temp_path)
-                    extracted_data = result.data
-                    os.unlink(temp_path)
+                    try:
+                        result = agent.extract(temp_path)
+                        extracted_data = result.data
+                    except Exception as e:
+                        progress_queue.put({'type': 'error', 'text': f"Failed to extract data from {file['name']}: {str(e)}"})
+                        continue
+                    finally:
+                        os.unlink(temp_path)
                     
                     # Process extracted data
                     rows = self._process_extracted_data(extracted_data, file, progress_queue)
@@ -560,10 +572,12 @@ class MoreRetailAutomation:
             progress_queue.put({'type': 'progress', 'value': 100})
             progress_queue.put({'type': 'status', 'text': f"PDF workflow completed! Processed {processed_count} PDFs and appended {total_rows_appended} rows to the sheet"})
             progress_queue.put({'type': 'done', 'result': {'success': True, 'processed': processed_count, 'rows_appended': total_rows_appended}})
+            progress_queue.put({'type': 'info', 'text': f"Sent done message with result: success=True, processed={processed_count}, rows_appended={total_rows_appended}"})
             
         except Exception as e:
             progress_queue.put({'type': 'error', 'text': f"PDF workflow failed: {str(e)}"})
             progress_queue.put({'type': 'done', 'result': {'success': False, 'processed': 0, 'rows_appended': 0}})
+            progress_queue.put({'type': 'info', 'text': f"Sent done message with result: success=False, processed=0, rows_appended=0"})
     
     def _list_drive_files(self, folder_id: str, days_back: int, progress_queue: queue.Queue) -> List[Dict]:
         """List PDF files in Drive folder"""
@@ -841,7 +855,7 @@ def main():
     # Initialize session state for configuration
     if 'gmail_config' not in st.session_state:
         st.session_state.gmail_config = {
-            'sender': "aws-reports@moreretail.in",  # Updated for More Retail
+            'sender': "aws-reports@moreretail.in",
             'search_term': "in:spam ",
             'days_back': 7,
             'max_results': 1000,
@@ -852,9 +866,9 @@ def main():
         st.session_state.pdf_config = {
             'drive_folder_id': "1CKPlXQcQsvGDWmpINVj8lpKI7G9VG1Yv",  # Placeholder, update as needed
             'llama_api_key': "llx-FccnxqEJsqrNTltO8u0zByspDJ7MawqnbI8KGKffEDGzHyoa",
-            'llama_agent': "More retail Agent",  # Updated for More Retail
-            'spreadsheet_id': "16y9DAK2tVHgnZNnPeRoSSPSSPPE2NcspW_qqMF8ZR8OOC0",  # Placeholder, update as needed
-            'sheet_range': "mraws",  # Updated for More Retail
+            'llama_agent': "More retail Agent",
+            'spreadsheet_id': "16y9DAK2tVHgnZNnPeRoSSPPE2NcspW_qqMF8ZR8OOC0",
+            'sheet_range': "mraws",
             'days_back': 1
         }
     
@@ -868,7 +882,8 @@ def main():
             'logs': [],
             'result': None,
             'thread': None,
-            'queue': queue.Queue()
+            'queue': queue.Queue(),
+            'start_triggered': False
         }
     
     # Configuration section in sidebar
@@ -919,30 +934,33 @@ def main():
     # Add a separator
     st.sidebar.markdown("---")
     st.sidebar.markdown("### Execute Workflows")
-    st.sidebar.info("Configure settings above, then choose a workflow to run")
+    st.sidebar.info("Configure settings above, select a workflow, and click Start to run")
     
     # Main content area with tabs
     dashboard_tab, logs_tab = st.tabs(["Dashboard", "Logs"])
     
     with dashboard_tab:
-        # Workflow buttons
+        # Workflow selection
         st.header("Choose Workflow")
         col1, col2, col3 = st.columns(3)
         
         with col1:
-            if st.button("Gmail Workflow Only", use_container_width=True, 
-                        disabled=st.session_state.workflow_state['running']):
+            if st.button("Select Gmail Workflow", use_container_width=True, 
+                        disabled=st.session_state.workflow_state['running'] or st.session_state.workflow_state['type'] == 'gmail'):
                 st.session_state.workflow_state['type'] = "gmail"
+                st.session_state.workflow_state['start_triggered'] = False
         
         with col2:
-            if st.button("PDF Workflow Only", use_container_width=True, 
-                        disabled=st.session_state.workflow_state['running']):
+            if st.button("Select PDF Workflow", use_container_width=True, 
+                        disabled=st.session_state.workflow_state['running'] or st.session_state.workflow_state['type'] == 'pdf'):
                 st.session_state.workflow_state['type'] = "pdf"
+                st.session_state.workflow_state['start_triggered'] = False
         
         with col3:
-            if st.button("Combined Workflow", use_container_width=True, 
-                        disabled=st.session_state.workflow_state['running']):
+            if st.button("Select Combined Workflow", use_container_width=True, 
+                        disabled=st.session_state.workflow_state['running'] or st.session_state.workflow_state['type'] == 'combined'):
                 st.session_state.workflow_state['type'] = "combined"
+                st.session_state.workflow_state['start_triggered'] = False
         
         # Show current configuration preview
         if not st.session_state.workflow_state['type'] and not st.session_state.workflow_state['running']:
@@ -961,45 +979,52 @@ def main():
                 display_pdf_config['llama_api_key'] = "*" * len(display_pdf_config['llama_api_key'])
                 st.json(display_pdf_config)
             
-            st.info("Configure your settings in the sidebar, then select a workflow above to begin automation")
+            st.info("Configure your settings in the sidebar, select a workflow above, and click Start to begin automation")
             return
         
-        # Run workflows using session state configurations
+        # Show selected workflow and start button
         if st.session_state.workflow_state['type'] and not st.session_state.workflow_state['running']:
-            # Create automation instance
-            automation = MoreRetailAutomation()
+            st.header(f"Selected Workflow: {st.session_state.workflow_state['type'].capitalize()}")
+            if st.button(f"Start {st.session_state.workflow_state['type'].capitalize()} Workflow", 
+                        key=f"start_{st.session_state.workflow_state['type']}", 
+                        use_container_width=True):
+                st.session_state.workflow_state['start_triggered'] = True
             
             # Authentication section
             st.header("Authentication")
             auth_progress = st.progress(0)
             auth_status = st.empty()
             
-            if automation.authenticate_from_secrets(auth_progress, auth_status, st.session_state.workflow_state['queue']):
-                st.success("Authentication successful!")
+            if st.session_state.workflow_state['start_triggered']:
+                # Create automation instance
+                automation = MoreRetailAutomation()
                 
-                # Workflow execution section
-                st.header("Workflow Execution")
-                
-                # Start the background thread
-                thread = threading.Thread(
-                    target=run_workflow_in_background,
-                    args=(automation, st.session_state.workflow_state['type'], 
-                          st.session_state.gmail_config, st.session_state.pdf_config, 
-                          st.session_state.workflow_state['queue'])
-                )
-                thread.start()
-                
-                # Update workflow state
-                st.session_state.workflow_state['running'] = True
-                st.session_state.workflow_state['thread'] = thread
-                st.session_state.workflow_state['logs'] = []
-                st.session_state.workflow_state['progress'] = 0
-                st.session_state.workflow_state['status'] = "Initializing..."
+                if automation.authenticate_from_secrets(auth_progress, auth_status, st.session_state.workflow_state['queue']):
+                    st.success("Authentication successful!")
+                    
+                    # Workflow execution section
+                    st.header("Workflow Execution")
+                    
+                    # Start the background thread
+                    thread = threading.Thread(
+                        target=run_workflow_in_background,
+                        args=(automation, st.session_state.workflow_state['type'], 
+                              st.session_state.gmail_config, st.session_state.pdf_config, 
+                              st.session_state.workflow_state['queue'])
+                    )
+                    thread.start()
+                    
+                    # Update workflow state
+                    st.session_state.workflow_state['running'] = True
+                    st.session_state.workflow_state['thread'] = thread
+                    st.session_state.workflow_state['logs'] = []
+                    st.session_state.workflow_state['progress'] = 0
+                    st.session_state.workflow_state['status'] = "Initializing..."
         
         # Handle running workflows
         if st.session_state.workflow_state['running']:
-            # Enable auto-refresh every 1 second while running
-            st_autorefresh(interval=1000, key="workflow_refresh")
+            # Enable auto-refresh every 2 seconds while running
+            st_autorefresh(interval=2000, key="workflow_refresh")
             
             # Poll the queue for updates
             while not st.session_state.workflow_state['queue'].empty():
@@ -1019,6 +1044,7 @@ def main():
                 elif msg['type'] == 'done':
                     st.session_state.workflow_state['result'] = msg['result']
                     st.session_state.workflow_state['running'] = False
+                    st.session_state.workflow_state['start_triggered'] = False
             
             # Progress tracking
             main_progress = st.progress(st.session_state.workflow_state['progress'])
@@ -1041,12 +1067,13 @@ def main():
                     if st.session_state.workflow_state['type'] == "combined":
                         st.balloons()
                 elif result:
-                    st.error(f"{st.session_state.workflow_state['type'].capitalize()} workflow failed")
+                    st.error(f"{st.session_state.workflow_state['type'].capitalize()} workflow failed. Check logs for details.")
                 
                 # Reset button
                 if st.button("Reset Workflow"):
                     st.session_state.workflow_state['type'] = None
                     st.session_state.workflow_state['result'] = None
+                    st.session_state.workflow_state['start_triggered'] = False
                     st.rerun()
     
     with logs_tab:
@@ -1062,6 +1089,7 @@ def main():
         if st.button("Reset Workflow", use_container_width=True):
             st.session_state.workflow_state['type'] = None
             st.session_state.workflow_state['result'] = None
+            st.session_state.workflow_state['start_triggered'] = False
             st.rerun()
     with col2:
         if st.button("Reset All Settings", use_container_width=True, type="secondary"):
