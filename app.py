@@ -1,3 +1,4 @@
+```python
 #!/usr/bin/env python3
 """
 Streamlit App for More Retail Automation Workflows
@@ -603,7 +604,7 @@ class MoreRetailAutomation:
                         temp_path = temp_file.name
                     
                     try:
-                        result = self._safe_extract(agent, temp_path, retries=3, wait_time=2)
+                        result = self._safe_extract(agent, temp_path, retries=3, wait_time=2, progress_queue=progress_queue)
                         extracted_data = result.data
                     except Exception as e:
                         progress_queue.put({'type': 'error', 'text': f"Failed to extract data from {file['name']}: {str(e)}"})
@@ -730,18 +731,21 @@ class MoreRetailAutomation:
             logger.error(f"[ERROR] Failed to download {file_name}: {str(e)}")
             return b""
     
-    def _safe_extract(self, agent, file_path: str, retries: int = 3, wait_time: int = 2):
+    def _safe_extract(self, agent, file_path: str, retries: int = 3, wait_time: int = 2, progress_queue: Optional[queue.Queue] = None):
         """Retry-safe extraction to handle server disconnections"""
         for attempt in range(1, retries + 1):
             try:
-                progress_queue.put({'type': 'info', 'text': f"Extracting data from {file_path} (attempt {attempt}/{retries})"})
+                if progress_queue:
+                    progress_queue.put({'type': 'info', 'text': f"Extracting data from {file_path} (attempt {attempt}/{retries})"})
                 logger.info(f"[LLAMA] Extracting data from {file_path} (attempt {attempt}/{retries})")
                 result = agent.extract(file_path)
-                progress_queue.put({'type': 'info', 'text': "Extraction successful"})
+                if progress_queue:
+                    progress_queue.put({'type': 'info', 'text': "Extraction successful"})
                 logger.info(f"[LLAMA] Extraction successful for {file_path}")
                 return result
             except Exception as e:
-                progress_queue.put({'type': 'error', 'text': f"Attempt {attempt} failed for {file_path}: {str(e)}"})
+                if progress_queue:
+                    progress_queue.put({'type': 'error', 'text': f"Attempt {attempt} failed for {file_path}: {str(e)}"})
                 logger.error(f"[ERROR] Attempt {attempt} failed for {file_path}: {str(e)}")
                 if attempt < retries:
                     time.sleep(wait_time)
@@ -881,11 +885,11 @@ def main():
     
     if 'pdf_config' not in st.session_state:
         st.session_state.pdf_config = {
-            'drive_folder_id': "1XHIFX-Gsb_Mx_AYjoi2NG1vMlvNE5CmQ",
-            'llama_api_key': "llx-FccnxqEJsqrNTltO8u0zByspDJ7MawqnbI8KGKffEDGzHyoa",
+            'drive_folder_id': "1C251csI1oOeX_skv7mfqpZB0NbyLLd9d",
+            'llama_api_key': "llx-MO0lw34A7DeYX1wij0V4NkLyfwDUmUsvdpmrthFH5yggsnmS",
             'llama_agent': "More retail Agent",
             'spreadsheet_id': "16y9DAK2tVHgnZNnPeRoSSPPE2NcspW_qqMF8ZR8OOC0",
-            'sheet_range': "mraws",
+            'sheet_range': "mrgrn",
             'days_back': 1
         }
     
@@ -1119,3 +1123,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+```
