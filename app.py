@@ -221,7 +221,7 @@ class MoreRetailAutomation:
         """Process Gmail attachment download workflow"""
         try:
             if not self._check_memory(progress_queue):
-                progress_queue.put({'type': 'done', 'result': {'success': False, 'processed': 0}})
+                progress_queue.put({'type': 'done', 'result': {'success': False, 'processed': 0, 'rows_appended': 0}})
                 return
             
             progress_queue.put({'type': 'status', 'text': "Starting Gmail workflow..."})
@@ -240,7 +240,7 @@ class MoreRetailAutomation:
             
             if not emails:
                 progress_queue.put({'type': 'warning', 'text': "No emails found matching criteria"})
-                progress_queue.put({'type': 'done', 'result': {'success': True, 'processed': 0}})
+                progress_queue.put({'type': 'done', 'result': {'success': True, 'processed': 0, 'rows_appended': 0}})
                 return
             
             progress_queue.put({'type': 'status', 'text': f"Found {len(emails)} emails. Processing attachments..."})
@@ -252,7 +252,7 @@ class MoreRetailAutomation:
             
             if not base_folder_id:
                 progress_queue.put({'type': 'error', 'text': "Failed to create base folder in Google Drive"})
-                progress_queue.put({'type': 'done', 'result': {'success': False, 'processed': 0}})
+                progress_queue.put({'type': 'done', 'result': {'success': False, 'processed': 0, 'rows_appended': 0}})
                 return
             
             progress_queue.put({'type': 'progress', 'value': 50})
@@ -404,7 +404,7 @@ class MoreRetailAutomation:
                 clean_filename = self._sanitize_filename(filename)
                 final_filename = clean_filename
                 
-                # Check if file already exists
+                # Check if file already exists by name
                 if not self._file_exists_in_folder(final_filename, type_folder_id):
                     # Upload to Drive
                     file_metadata = {
@@ -467,7 +467,7 @@ class MoreRetailAutomation:
         return type_map.get(ext, "Other")
     
     def _file_exists_in_folder(self, filename: str, folder_id: str) -> bool:
-        """Check if file already exists in folder"""
+        """Check if file already exists in folder by name"""
         try:
             query = f"name='{filename}' and '{folder_id}' in parents and trashed=false"
             existing = self.drive_service.files().list(q=query, fields='files(id, name)').execute()
@@ -480,12 +480,12 @@ class MoreRetailAutomation:
         """Process PDF workflow with LlamaParse"""
         try:
             if not self._check_memory(progress_queue):
-                progress_queue.put({'type': 'done', 'result': {'success': False, 'processed': 0}})
+                progress_queue.put({'type': 'done', 'result': {'success': False, 'processed': 0, 'rows_appended': 0}})
                 return
             
             if not LLAMA_AVAILABLE:
                 progress_queue.put({'type': 'error', 'text': "LlamaParse not available. Install with: pip install llama-cloud-services"})
-                progress_queue.put({'type': 'done', 'result': {'success': False, 'processed': 0}})
+                progress_queue.put({'type': 'done', 'result': {'success': False, 'processed': 0, 'rows_appended': 0}})
                 return
             
             progress_queue.put({'type': 'status', 'text': "Starting PDF processing workflow..."})
@@ -498,7 +498,7 @@ class MoreRetailAutomation:
             
             if agent is None:
                 progress_queue.put({'type': 'error', 'text': f"Could not find agent '{config['llama_agent']}'. Check LlamaParse dashboard."})
-                progress_queue.put({'type': 'done', 'result': {'success': False, 'processed': 0}})
+                progress_queue.put({'type': 'done', 'result': {'success': False, 'processed': 0, 'rows_appended': 0}})
                 return
             
             progress_queue.put({'type': 'progress', 'value': 40})
@@ -508,7 +508,7 @@ class MoreRetailAutomation:
             
             if not pdf_files:
                 progress_queue.put({'type': 'warning', 'text': "No PDF files found in the specified folder"})
-                progress_queue.put({'type': 'done', 'result': {'success': True, 'processed': 0}})
+                progress_queue.put({'type': 'done', 'result': {'success': True, 'processed': 0, 'rows_appended': 0}})
                 return
             
             progress_queue.put({'type': 'status', 'text': f"Found {len(pdf_files)} PDF files. Processing..."})
@@ -853,7 +853,7 @@ def main():
             'drive_folder_id': "1CKPlXQcQsvGDWmpINVj8lpKI7G9VG1Yv",  # Placeholder, update as needed
             'llama_api_key': "llx-FccnxqEJsqrNTltO8u0zByspDJ7MawqnbI8KGKffEDGzHyoa",
             'llama_agent': "More retail Agent",  # Updated for More Retail
-            'spreadsheet_id': "16y9DAK2tVHgnZNnPeRoSSPPE2NcspW_qqMF8ZR8OOC0",  # Placeholder, update as needed
+            'spreadsheet_id': "16y9DAK2tVHgnZNnPeRoSSPSSPPE2NcspW_qqMF8ZR8OOC0",  # Placeholder, update as needed
             'sheet_range': "mraws",  # Updated for More Retail
             'days_back': 1
         }
@@ -1033,10 +1033,10 @@ def main():
                 
                 # Show result
                 result = st.session_state.workflow_state['result']
-                if result and result['success']:
-                    message = f"{st.session_state.workflow_state['type'].capitalize()} workflow completed! Processed {result['processed']} items"
-                    if result['rows_appended'] > 0:
-                        message += f" and appended {result['rows_appended']} rows to the sheet"
+                if result and result.get('success', False):
+                    message = f"{st.session_state.workflow_state['type'].capitalize()} workflow completed! Processed {result.get('processed', 0)} items"
+                    if result.get('rows_appended', 0) > 0:
+                        message += f" and appended {result.get('rows_appended', 0)} rows to the sheet"
                     st.success(message)
                     if st.session_state.workflow_state['type'] == "combined":
                         st.balloons()
