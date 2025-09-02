@@ -829,7 +829,7 @@ def run_workflow_in_background(automation, workflow_type, gmail_config, pdf_conf
         progress_queue.put({'type': 'done', 'result': {'success': False, 'processed': 0}})
 
 def main():
-    st.title("🛒 More Retail AWS Automation Dashboard")
+    st.title("🛒 More Retail DoNot Automation Dashboard")
     st.markdown("Automate Gmail attachment downloads and PDF processing workflows for More Retail")
     
     # Initialize session state for configuration
