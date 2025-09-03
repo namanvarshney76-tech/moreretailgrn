@@ -117,29 +117,25 @@ class Auth:
                     return True
 
             # Fresh auth using client secrets from Streamlit secrets
-            gsec = st.secrets.get("google", {})
-            client_id = gsec.get("client_id")
-            client_secret = gsec.get("client_secret")
-            redirect_uri = gsec.get("redirect_uri")
-            if not (client_id and client_secret and redirect_uri):
-                push_log("error", "Missing Google OAuth secrets (client_id/client_secret/redirect_uri)")
-                return False
-
-            flow = Flow.from_client_config(
-                {
-                    "web": {
-                        "client_id": client_id,
-                        "project_id": "streamlit-oauth",
-                        "auth_uri": "https://accounts.google.com/o/oauth2/auth",
-                        "token_uri": "https://oauth2.googleapis.com/token",
-                        "auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs",
-                        "client_secret": client_secret,
-                        "redirect_uris": [redirect_uri],
-                        "javascript_origins": [redirect_uri.rstrip('/')]
-                    }
-                }, scopes=combined_scopes
-            )
+        gsec = st.secrets.get("google", {})
+        creds_json = gsec.get("credentials_json")
+        if not creds_json:
+            push_log("error", "Missing 'credentials_json' in Streamlit secrets")
+            return False
+        
+        client_config = json.loads(creds_json)
+        flow = Flow.from_client_config(client_config, scopes=combined_scopes)
+        
+        # Pick redirect URI dynamically
+        redirect_uris = client_config["web"].get("redirect_uris", [])
+        if redirect_uris:
+            # Prefer cloud deployment redirect if IS_CLOUD_DEPLOYMENT is true
+            if gsec.get("IS_CLOUD_DEPLOYMENT", False):
+                redirect_uri = [u for u in redirect_uris if "streamlit.app" in u][0]
+            else:
+                redirect_uri = redirect_uris[0]
             flow.redirect_uri = redirect_uri
+
 
             # If a code is present in query params, fetch token
             code = st.query_params.get("code")
