@@ -144,7 +144,7 @@ class GmailGDriveAutomation:
                 flow = Flow.from_client_config(
                     client_config=creds_data,
                     scopes=combined_scopes,
-                    redirect_uri=st.secrets.get("google", {}).get("redirect_uri", "https://gmail-drive-automation.streamlit.app/")
+                    redirect_uri=st.secrets.get("google", {}).get("redirect_uri", "https://moreretailaws.streamlit.app/")
                 )
                 
                 # Generate authorization URL
