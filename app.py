@@ -18,7 +18,7 @@ from queue import Queue
 # Google API imports
 from google.oauth2.credentials import Credentials
 from google.oauth2 import service_account
-from google_auth_oauthlib.flow import InstalledAppFlow
+from google_auth_oauthlib.flow import InstalledAppFlow, Flow
 from google.auth.transport.requests import Request
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
@@ -53,6 +53,8 @@ if 'log_messages' not in st.session_state:
     st.session_state.log_messages = []
 if 'workflow_running' not in st.session_state:
     st.session_state.workflow_running = False
+if 'oauth_token' not in st.session_state:
+    st.session_state.oauth_token = None
 
 # Configuration
 CONFIGS = {
@@ -102,6 +104,91 @@ class GmailGDriveAutomation:
         self.gmail_scopes = ['https://www.googleapis.com/auth/gmail.readonly']
         self.drive_scopes = ['https://www.googleapis.com/auth/drive.file']
         
+    def authenticate_from_secrets(self, progress_bar, status_text):
+        """Authenticate using Streamlit secrets with web-based OAuth flow"""
+        try:
+            status_text.text("Authenticating with Google APIs...")
+            progress_bar.progress(10)
+            
+            # Check for existing token in session state
+            if 'oauth_token' in st.session_state and st.session_state.oauth_token:
+                try:
+                    combined_scopes = list(set(self.gmail_scopes + self.drive_scopes))
+                    creds = Credentials.from_authorized_user_info(st.session_state.oauth_token, combined_scopes)
+                    if creds and creds.valid:
+                        progress_bar.progress(50)
+                        # Build services
+                        self.gmail_service = build('gmail', 'v1', credentials=creds)
+                        self.drive_service = build('drive', 'v3', credentials=creds)
+                        progress_bar.progress(100)
+                        status_text.text("Authentication successful!")
+                        return True
+                    elif creds and creds.expired and creds.refresh_token:
+                        creds.refresh(Request())
+                        st.session_state.oauth_token = json.loads(creds.to_json())
+                        # Build services
+                        self.gmail_service = build('gmail', 'v1', credentials=creds)
+                        self.drive_service = build('drive', 'v3', credentials=creds)
+                        progress_bar.progress(100)
+                        status_text.text("Authentication successful!")
+                        return True
+                except Exception as e:
+                    st.info(f"Cached token invalid, requesting new authentication: {str(e)}")
+            
+            # Use Streamlit secrets for OAuth
+            if "google" in st.secrets and "credentials_json" in st.secrets["google"]:
+                creds_data = json.loads(st.secrets["google"]["credentials_json"])
+                combined_scopes = list(set(self.gmail_scopes + self.drive_scopes))
+                
+                # Configure for web application
+                flow = Flow.from_client_config(
+                    client_config=creds_data,
+                    scopes=combined_scopes,
+                    redirect_uri=st.secrets.get("google", {}).get("redirect_uri", "https://moreretailaws.streamlit.app/")
+                )
+                
+                # Generate authorization URL
+                auth_url, _ = flow.authorization_url(prompt='consent')
+                
+                # Check for callback code
+                query_params = st.query_params
+                if "code" in query_params:
+                    try:
+                        code = query_params["code"]
+                        flow.fetch_token(code=code)
+                        creds = flow.credentials
+                        
+                        # Save credentials in session state
+                        st.session_state.oauth_token = json.loads(creds.to_json())
+                        
+                        progress_bar.progress(50)
+                        # Build services
+                        self.gmail_service = build('gmail', 'v1', credentials=creds)
+                        self.drive_service = build('drive', 'v3', credentials=creds)
+                        
+                        progress_bar.progress(100)
+                        status_text.text("Authentication successful!")
+                        
+                        # Clear the code from URL
+                        st.query_params.clear()
+                        return True
+                    except Exception as e:
+                        logger.error(f"Authentication failed: {str(e)}")
+                        return False
+                else:
+                    # Show authorization link
+                    st.markdown("### Google Authentication Required")
+                    st.markdown(f"[Authorize with Google]({auth_url})")
+                    st.info("Click the link above to authorize, you'll be redirected back automatically")
+                    st.stop()
+            else:
+                logger.error("Google credentials missing in Streamlit secrets")
+                return False
+                
+        except Exception as e:
+            logger.error(f"Authentication failed: {str(e)}")
+            return False
+
     def authenticate(self):
         try:
             with open(self.credentials_path, 'r') as f:
@@ -113,8 +200,10 @@ class GmailGDriveAutomation:
                 drive_creds = service_account.Credentials.from_service_account_file(
                     self.credentials_path, scopes=self.drive_scopes)
             else:
-                gmail_creds = self._oauth2_authenticate(self.gmail_scopes, 'gmail')
-                drive_creds = self._oauth2_authenticate(self.drive_scopes, 'drive')
+                # Use OAuth authentication from secrets
+                progress_bar = st.progress(0)
+                status_text = st.empty()
+                return self.authenticate_from_secrets(progress_bar, status_text)
             
             self.gmail_service = build('gmail', 'v1', credentials=gmail_creds)
             self.drive_service = build('drive', 'v3', credentials=drive_creds)
@@ -446,6 +535,91 @@ class DrivePDFProcessor:
         self.drive_scopes = ['https://www.googleapis.com/auth/drive.readonly']
         self.sheets_scopes = ['https://www.googleapis.com/auth/spreadsheets']
         
+    def authenticate_from_secrets(self, progress_bar, status_text):
+        """Authenticate using Streamlit secrets with web-based OAuth flow"""
+        try:
+            status_text.text("Authenticating with Google APIs...")
+            progress_bar.progress(10)
+            
+            # Check for existing token in session state
+            if 'oauth_token' in st.session_state and st.session_state.oauth_token:
+                try:
+                    combined_scopes = list(set(self.drive_scopes + self.sheets_scopes))
+                    creds = Credentials.from_authorized_user_info(st.session_state.oauth_token, combined_scopes)
+                    if creds and creds.valid:
+                        progress_bar.progress(50)
+                        # Build services
+                        self.drive_service = build('drive', 'v3', credentials=creds)
+                        self.sheets_service = build('sheets', 'v4', credentials=creds)
+                        progress_bar.progress(100)
+                        status_text.text("Authentication successful!")
+                        return True
+                    elif creds and creds.expired and creds.refresh_token:
+                        creds.refresh(Request())
+                        st.session_state.oauth_token = json.loads(creds.to_json())
+                        # Build services
+                        self.drive_service = build('drive', 'v3', credentials=creds)
+                        self.sheets_service = build('sheets', 'v4', credentials=creds)
+                        progress_bar.progress(100)
+                        status_text.text("Authentication successful!")
+                        return True
+                except Exception as e:
+                    st.info(f"Cached token invalid, requesting new authentication: {str(e)}")
+            
+            # Use Streamlit secrets for OAuth
+            if "google" in st.secrets and "credentials_json" in st.secrets["google"]:
+                creds_data = json.loads(st.secrets["google"]["credentials_json"])
+                combined_scopes = list(set(self.drive_scopes + self.sheets_scopes))
+                
+                # Configure for web application
+                flow = Flow.from_client_config(
+                    client_config=creds_data,
+                    scopes=combined_scopes,
+                    redirect_uri=st.secrets.get("google", {}).get("redirect_uri", "https://gmail-drive-automation.streamlit.app/")
+                )
+                
+                # Generate authorization URL
+                auth_url, _ = flow.authorization_url(prompt='consent')
+                
+                # Check for callback code
+                query_params = st.query_params
+                if "code" in query_params:
+                    try:
+                        code = query_params["code"]
+                        flow.fetch_token(code=code)
+                        creds = flow.credentials
+                        
+                        # Save credentials in session state
+                        st.session_state.oauth_token = json.loads(creds.to_json())
+                        
+                        progress_bar.progress(50)
+                        # Build services
+                        self.drive_service = build('drive', 'v3', credentials=creds)
+                        self.sheets_service = build('sheets', 'v4', credentials=creds)
+                        
+                        progress_bar.progress(100)
+                        status_text.text("Authentication successful!")
+                        
+                        # Clear the code from URL
+                        st.query_params.clear()
+                        return True
+                    except Exception as e:
+                        logger.error(f"Authentication failed: {str(e)}")
+                        return False
+                else:
+                    # Show authorization link
+                    st.markdown("### Google Authentication Required")
+                    st.markdown(f"[Authorize with Google]({auth_url})")
+                    st.info("Click the link above to authorize, you'll be redirected back automatically")
+                    st.stop()
+            else:
+                logger.error("Google credentials missing in Streamlit secrets")
+                return False
+                
+        except Exception as e:
+            logger.error(f"Authentication failed: {str(e)}")
+            return False
+
     def authenticate(self):
         try:
             with open(self.credentials_path, 'r') as f:
@@ -463,11 +637,10 @@ class DrivePDFProcessor:
                 
             else:
                 logger.info("Using OAuth2 authentication")
-                combined_scopes = self.drive_scopes + self.sheets_scopes
-                creds = self._oauth2_authenticate(combined_scopes, 'combined')
-                
-                self.drive_service = build('drive', 'v3', credentials=creds)
-                self.sheets_service = build('sheets', 'v4', credentials=creds)
+                # Use OAuth authentication from secrets
+                progress_bar = st.progress(0)
+                status_text = st.empty()
+                return self.authenticate_from_secrets(progress_bar, status_text)
             
             logger.info("Successfully authenticated with Google Drive and Sheets")
             return True
