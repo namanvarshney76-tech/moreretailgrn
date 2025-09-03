@@ -929,7 +929,7 @@ def authenticate_user():
         st.error(f"Failed to load credentials: {str(e)}")
         return False
 
-def display_config(workflow_type: str, config: Dict):
+def display_config(workflow_type: str, config: Dict, tab_suffix: str = ""):
     """Display configuration for each workflow"""
     st.subheader(f"📋 {workflow_type.replace('_', ' ').title()} Configuration")
     
@@ -939,12 +939,15 @@ def display_config(workflow_type: str, config: Dict):
     with col1:
         for key, value in config.items():
             if key == 'credentials_path':
-                st.text_input("Credentials Path", value=value, disabled=True, key=f"{workflow_type}_{key}")
+                st.text_input("Credentials Path", value=value, disabled=True, 
+                             key=f"{workflow_type}_{key}_{tab_suffix}")
             elif 'api_key' in key.lower():
                 # Hide API keys for security
-                st.text_input(key.replace('_', ' ').title(), value="*" * 20, disabled=True, key=f"{workflow_type}_{key}")
+                st.text_input(key.replace('_', ' ').title(), value="*" * 20, disabled=True, 
+                             key=f"{workflow_type}_{key}_{tab_suffix}")
             else:
-                st.text_input(key.replace('_', ' ').title(), value=str(value), disabled=True, key=f"{workflow_type}_{key}")
+                st.text_input(key.replace('_', ' ').title(), value=str(value), disabled=True, 
+                             key=f"{workflow_type}_{key}_{tab_suffix}")
 
 def run_gmail_to_drive_workflow(days_back: int, max_results: int):
     """Run Gmail to Drive workflow"""
@@ -1087,7 +1090,7 @@ def main():
         st.header("📧 Gmail to Google Drive Workflow")
         
         # Display configuration
-        display_config("gmail_to_drive", CONFIGS['gmail_to_drive'])
+        display_config("gmail_to_drive", CONFIGS['gmail_to_drive'], "tab1")
         
         st.markdown("---")
         st.subheader("⚙️ Workflow Parameters")
@@ -1133,7 +1136,7 @@ def main():
             st.stop()
         
         # Display configuration
-        display_config("drive_to_sheet", CONFIGS['drive_to_sheet'])
+        display_config("drive_to_sheet", CONFIGS['drive_to_sheet'], "tab2")
         
         st.markdown("---")
         st.subheader("⚙️ Workflow Parameters")
@@ -1166,13 +1169,13 @@ def main():
         
         # Display both configurations
         col1, col2 = st.columns(2)
-        with col1:
-            st.markdown("### 📧 Gmail to Drive Config")
-            display_config("gmail_to_drive", CONFIGS['gmail_to_drive'])
-        
-        with col2:
-            st.markdown("### 📄 Drive to Excel Config")
-            display_config("drive_to_sheet", CONFIGS['drive_to_sheet'])
+    with col1:
+        st.markdown("### 📧 Gmail to Drive Config")
+        display_config("gmail_to_drive", CONFIGS['gmail_to_drive'], "tab3_col1")
+    
+    with col2:
+        st.markdown("### 📄 Drive to Excel Config")
+        display_config("drive_to_sheet", CONFIGS['drive_to_sheet'], "tab3_col2")
         
         st.markdown("---")
         st.subheader("⚙️ Workflow Parameters")
