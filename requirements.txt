@@ -3,8 +3,6 @@ google-auth
 google-auth-oauthlib
 google-auth-httplib2
 google-api-python-client
-llama-cloud-services
-streamlit-autorefresh
-gmailtodrive
-psutil
-
+pandas
+requests
+openpyxl
