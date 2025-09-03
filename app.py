@@ -1,20 +1,6 @@
 #!/usr/bin/env python3
 """
-More Retail – Streamlit Orchestrator
-Tabs:
-  1) Gmail → Drive (gmailtodrive.py)
-  2) Drive → Sheet (pdftoexcel.py)
-  3) Combined (runs 1, then 2 sequentially)
-  4) Logs (live run log)
-
-Auth:
-  - Uses the same web-based OAuth logic style as app(2).py, driven by Streamlit secrets.
-
-Notes:
-  - All base configs are hardcoded and shown after authentication.
-  - Runtime-adjustable params: (days_back, max_results) for Gmail→Drive; (days_back) for Drive→Sheet.
-  - Each workflow has a Start button; execution stops at completion (no auto-restarts).
-  - End-of-run stats include: processed/failed files, rows appended, duplicate rows in sheet.
+More Retail – Streamlit Orchestrator (Cloud-ready)
 """
 
 import os
@@ -22,64 +8,48 @@ import json
 import time
 import queue
 import threading
-from typing import Dict, Any, List
+from typing import Dict, Any
 
 import streamlit as st
-from datetime import datetime, timedelta
+from datetime import datetime
 
-# Google API libs
 from google.oauth2.credentials import Credentials
 from google_auth_oauthlib.flow import Flow
 from google.auth.transport.requests import Request
 from googleapiclient.discovery import build
 
-# Local workflow modules
 from gmailtodrive import GmailGDriveAutomation
 from pdftoexcel import DrivePDFProcessor
 
-# =====================
-# Page & Session Setup
-# =====================
-st.set_page_config(page_title="More Retail – AWS (Gmail→Drive→Sheet)", page_icon="📦", layout="wide")
+st.set_page_config(page_title="More Retail – AWS", page_icon="📦", layout="wide")
 
 if "log_queue" not in st.session_state:
     st.session_state.log_queue = queue.Queue()
 if "logs" not in st.session_state:
-    st.session_state.logs = []  # list of {ts, level, text}
+    st.session_state.logs = []
 if "running" not in st.session_state:
     st.session_state.running = False
 if "result_stats" not in st.session_state:
     st.session_state.result_stats = {}
 
-# =====================
-# Hardcoded base config
-# =====================
 DEFAULT_GMAIL_CONFIG = {
     "sender": "aws-reports@moreretail.in",
-    "search_term": "in:span ",
-    "gdrive_folder_id": "1gZoNjdGarwMD5-Ci3uoqjNZZ8bTNyVoy",  # destination base folder
-    # runtime params (UI-controlled): days_back, max_results
+    "search_term": "aws bill, aws usage",
+    "gdrive_folder_id": "1gZoNjdGarwMD5-Ci3uoqjNZZ8bTNyVoy",
 }
 
 DEFAULT_PDF_CONFIG = {
-    "drive_folder_id": "1XHIFX-Gsb_Mx_AYjoi2NG1vMlvNE5CmQ",  # source PDFs folder
+    "drive_folder_id": "1XHIFX-Gsb_Mx_AYjoi2NG1vMlvNE5CmQ",
     "spreadsheet_id": "16y9DAK2tVHgnZNnPeRoSSPPE2NcspW_qqMF8ZR8OOC0",
-    "sheet_range": "mraws",  # e.g., "Sheet1" or "Sheet1!A:Z"
-    "llama_agent": "More retail Agent",  # shown for transparency; key is taken from secrets
-    # runtime param (UI-controlled): days_back
+    "sheet_range": "mraws",
+    "llama_agent": "More retail Agent",
 }
 
-# =====================
-# Helpers: Logging
-# =====================
 LEVEL_EMOJI = {"info": "ℹ️", "success": "✅", "warning": "⚠️", "error": "❌", "status": "⏳"}
 
 def push_log(level: str, text: str):
     st.session_state.log_queue.put({"level": level, "text": text, "ts": datetime.now().strftime("%H:%M:%S")})
 
-# =====================
-# OAuth (adapted style of app(2).py)
-# =====================
 class Auth:
     def __init__(self):
         self.gmail_scopes = ['https://www.googleapis.com/auth/gmail.readonly']
@@ -90,19 +60,10 @@ class Auth:
         self.sheets_service = None
 
     def authenticate_from_secrets(self) -> bool:
-        """Authenticate using web-based OAuth, storing token in session_state (pattern from app(2).py).
-        Expects secrets like:
-        [google]
-        client_id = "..."
-        client_secret = "..."
-        redirect_uri = "https://moreretailaws.streamlit.app/"  # or your deployed app URL
-        llama_api_key = "llx-..."  # optional for PDF step
-        """
         try:
             push_log("status", "Authenticating with Google APIs")
             combined_scopes = list(set(self.gmail_scopes + self.drive_scopes + self.sheets_scopes))
 
-            # Reuse token if present
             if 'oauth_token' in st.session_state:
                 creds = Credentials.from_authorized_user_info(st.session_state['oauth_token'], combined_scopes)
                 if creds and creds.valid:
@@ -116,44 +77,39 @@ class Auth:
                     push_log("success", "Authentication refreshed")
                     return True
 
-            # Fresh auth using client secrets from Streamlit secrets
-          gsec = st.secrets.get("google", {})
-          creds_json = gsec.get("credentials_json")
-          if not creds_json:
-              push_log("error", "Missing 'credentials_json' in Streamlit secrets")
-              return False
-          
-          client_config = json.loads(creds_json)
-          flow = Flow.from_client_config(client_config, scopes=combined_scopes)
-          
-          # Pick redirect URI dynamically
-          redirect_uris = client_config["web"].get("redirect_uris", [])
-          if redirect_uris:
-              # Prefer cloud deployment redirect if IS_CLOUD_DEPLOYMENT is true
-              if gsec.get("IS_CLOUD_DEPLOYMENT", False):
-                  redirect_uri = [u for u in redirect_uris if "streamlit.app" in u][0]
-              else:
-                  redirect_uri = redirect_uris[0]
-            flow.redirect_uri = redirect_uri
+            gsec = st.secrets.get("google", {})
+            creds_json = gsec.get("credentials_json")
+            if not creds_json:
+                push_log("error", "Missing 'credentials_json' in Streamlit secrets")
+                return False
 
+            client_config = json.loads(creds_json)
+            flow = Flow.from_client_config(client_config, scopes=combined_scopes)
 
-            # If a code is present in query params, fetch token
+            redirect_uris = client_config["web"].get("redirect_uris", [])
+            redirect_uri = None
+            if redirect_uris:
+                if gsec.get("IS_CLOUD_DEPLOYMENT", False):
+                    redirect_uri = [u for u in redirect_uris if "streamlit.app" in u][0]
+                else:
+                    redirect_uri = redirect_uris[0]
+            if redirect_uri:
+                flow.redirect_uri = redirect_uri
+
             code = st.query_params.get("code")
             if code:
                 flow.fetch_token(code=code)
                 creds = flow.credentials
                 self._store_token(creds)
                 self._build_services(creds)
-                # clear code param
                 st.query_params.clear()
                 push_log("success", "Authentication successful")
                 return True
 
-            # else show a login link and stop
             auth_url, _ = flow.authorization_url(prompt='consent', access_type='offline', include_granted_scopes='true')
             st.markdown("### Google Authentication Required")
             st.markdown(f"[Authorize with Google]({auth_url})")
-            st.info("Click the link above to authorize. You'll be redirected back here automatically.")
+            st.info("Click the link above to authorize. You'll be redirected back here.")
             st.stop()
         except Exception as e:
             push_log("error", f"Authentication failed: {e}")
@@ -166,6 +122,9 @@ class Auth:
         self.gmail_service = build('gmail', 'v1', credentials=creds)
         self.drive_service = build('drive', 'v3', credentials=creds)
         self.sheets_service = build('sheets', 'v4', credentials=creds)
+
+# (Rest of the workflow functions and UI remain unchanged from previous code)
+
 
 # =====================
 # Stats helpers
