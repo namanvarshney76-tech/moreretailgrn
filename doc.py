@@ -1,8 +1,4 @@
-#!/usr/bin/env python3
-"""
-Streamlit App for More Retail AWS Automation Workflows
-Combines Gmail attachment downloader and PDF processor with real-time tracking
-"""
+
 import streamlit as st
 import os
 import json
@@ -259,13 +255,13 @@ class MoreRetailAutomation:
             sender_folder_name = "docs@more.in"
             sender_folder_id = self._create_drive_folder(sender_folder_name, base_folder_id, progress_queue)
             
-            # Create spam folder
-            spam_folder_name = "grn"
-            spam_folder_id = self._create_drive_folder(spam_folder_name, sender_folder_id, progress_queue)
+            # Create grn folder
+            grn_folder_name = "grn"
+            grn_folder_id = self._create_drive_folder(grn_folder_name, sender_folder_id, progress_queue)
             
             # Create PDFs folder
             pdfs_folder_name = "PDFs"
-            pdfs_folder_id = self._create_drive_folder(pdfs_folder_name, spam_folder_id, progress_queue)
+            pdfs_folder_id = self._create_drive_folder(pdfs_folder_name, grn_folder_id, progress_queue)
             
             progress_queue.put({'type': 'progress', 'value': 50})
             
