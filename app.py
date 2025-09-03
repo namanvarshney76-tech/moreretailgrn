@@ -123,25 +123,40 @@ class MoreRetailAutomation:
                         status_text.text("Authentication successful!")
                         self.authentication_complete = True
                         return True
+                    elif creds and creds.expired and creds.refresh_token:
+                        # Try to refresh token
+                        creds.refresh(Request())
+                        st.session_state.oauth_token = json.loads(creds.to_json())
+                        # Build services
+                        self.gmail_service = build('gmail', 'v1', credentials=creds)
+                        self.drive_service = build('drive', 'v3', credentials=creds)
+                        self.sheets_service = build('sheets', 'v4', credentials=creds)
+                        progress_bar.progress(100)
+                        status_text.text("Authentication successful (token refreshed)!")
+                        self.authentication_complete = True
+                        return True
                 except Exception as e:
                     progress_queue.put({'type': 'info', 'text': f"Cached token invalid, requesting new authentication: {str(e)}"})
+                    # Clear invalid token
+                    if 'oauth_token' in st.session_state:
+                        del st.session_state.oauth_token
             
             # Use Streamlit secrets for OAuth
             if "google" in st.secrets and "credentials_json" in st.secrets["google"]:
                 creds_data = json.loads(st.secrets["google"]["credentials_json"])
                 combined_scopes = list(set(self.gmail_scopes + self.drive_scopes + self.sheets_scopes))
                 
+                # Get the current URL for redirect
+                current_url = "https://moreretailaws.streamlit.app/"  # Your app URL
+                
                 # Configure for web application
                 flow = Flow.from_client_config(
                     client_config=creds_data,
                     scopes=combined_scopes,
-                    redirect_uri="https://moreretailaws.streamlit.app/"  # Update with your actual URL
+                    redirect_uri=current_url
                 )
                 
-                # Generate authorization URL
-                auth_url, _ = flow.authorization_url(prompt='consent')
-                
-                # Check for callback code
+                # Check for callback code first
                 query_params = st.query_params
                 if "code" in query_params:
                     try:
@@ -163,17 +178,33 @@ class MoreRetailAutomation:
                         
                         self.authentication_complete = True
                         
-                        # Clear the code from URL
+                        # Clear the code from URL and rerun to refresh the page
                         st.query_params.clear()
+                        st.rerun()
                         return True
                     except Exception as e:
                         progress_queue.put({'type': 'error', 'text': f"Authentication failed: {str(e)}"})
+                        st.query_params.clear()
                         return False
                 else:
-                    # Show authorization link
+                    # Generate authorization URL and redirect
+                    auth_url, _ = flow.authorization_url(
+                        prompt='consent',
+                        access_type='offline',
+                        include_granted_scopes='true'
+                    )
+                    
+                    # Use JavaScript to redirect to auth URL
+                    st.markdown(f"""
+                    <script>
+                    window.location.href = "{auth_url}";
+                    </script>
+                    """, unsafe_allow_html=True)
+                    
+                    # Show manual link as backup
                     st.markdown("### Google Authentication Required")
-                    st.markdown(f"[Authorize with Google]({auth_url})")
-                    st.info("Click the link above to authorize, you'll be redirected back automatically")
+                    st.markdown(f"**[Click here to authorize with Google]({auth_url})**")
+                    st.info("You will be redirected to Google for authorization and then back to this app automatically.")
                     st.stop()
             else:
                 progress_queue.put({'type': 'error', 'text': "Google credentials missing in Streamlit secrets"})
@@ -798,6 +829,18 @@ def main():
     
     automation = st.session_state.automation
     
+    # Check for OAuth callback code on page load
+    query_params = st.query_params
+    if "code" in query_params and not automation.authentication_complete:
+        # Handle OAuth callback
+        progress_container = st.container()
+        with progress_container:
+            progress_bar = st.progress(0)
+            status_text = st.empty()
+            progress_queue = queue.Queue()
+            
+            automation.authenticate_from_secrets(progress_bar, status_text, progress_queue)
+    
     # Sidebar configuration
     st.sidebar.header("Configuration")
     
@@ -807,7 +850,14 @@ def main():
     else:
         st.sidebar.warning("⚠️ Authentication required")
         if st.sidebar.button("Authenticate Now"):
-            st.rerun()
+            # Trigger authentication
+            progress_container = st.container()
+            with progress_container:
+                progress_bar = st.progress(0)
+                status_text = st.empty()
+                progress_queue = queue.Queue()
+                
+                automation.authenticate_from_secrets(progress_bar, status_text, progress_queue)
     
     # Workflow selection
     workflow = st.sidebar.selectbox(
@@ -856,8 +906,9 @@ def main():
         if st.button("🚀 Run Both Workflows", disabled=not automation.authentication_complete):
             run_workflow("both", {**gmail_config, **pdf_config}, automation)
     
-    # Auto-refresh for real-time updates
-    st_autorefresh(interval=2000, key="datarefresh")
+    # Auto-refresh for real-time updates (reduced frequency to avoid issues)
+    if 'code' not in st.query_params:  # Don't auto-refresh during OAuth flow
+        st_autorefresh(interval=5000, key="datarefresh")
     
     # Display results
     if 'workflow_results' in st.session_state:
@@ -897,11 +948,11 @@ def run_workflow(workflow_type: str, config: dict, automation: MoreRetailAutomat
     if 'workflow_results' not in st.session_state:
         st.session_state.workflow_results = {'messages': [], 'stats': {}}
     
-    # Clear previous results
-    st.session_state.workflow_results = {'messages': [], 'stats': {}}
-    
-    # Authentication check
+    # Authentication check - this is the key fix
     if not automation.authentication_complete:
+        # Show authentication UI
+        st.info("Authentication required. Click the button below to authenticate with Google.")
+        
         progress_container = st.container()
         with progress_container:
             progress_bar = st.progress(0)
@@ -910,7 +961,7 @@ def run_workflow(workflow_type: str, config: dict, automation: MoreRetailAutomat
             # Create progress queue for authentication
             progress_queue = queue.Queue()
             
-            # Authenticate
+            # Authenticate - this will handle the redirect
             success = automation.authenticate_from_secrets(progress_bar, status_text, progress_queue)
             
             # Process authentication messages
@@ -918,12 +969,20 @@ def run_workflow(workflow_type: str, config: dict, automation: MoreRetailAutomat
                 try:
                     msg = progress_queue.get_nowait()
                     st.session_state.workflow_results['messages'].append(msg)
+                    # Display the message immediately
+                    if msg['type'] == 'error':
+                        st.error(msg['text'])
+                    elif msg['type'] == 'info':
+                        st.info(msg['text'])
                 except queue.Empty:
                     break
             
             if not success:
-                st.error("Authentication failed. Please check your credentials.")
+                st.error("Authentication failed. Please try again.")
                 return
+    
+    # Clear previous results only after successful authentication
+    st.session_state.workflow_results = {'messages': [], 'stats': {}}
     
     # Run workflow in thread
     progress_container = st.container()
