@@ -575,7 +575,7 @@ class DrivePDFProcessor:
                 flow = Flow.from_client_config(
                     client_config=creds_data,
                     scopes=combined_scopes,
-                    redirect_uri=st.secrets.get("google", {}).get("redirect_uri", "https://gmail-drive-automation.streamlit.app/")
+                    redirect_uri=st.secrets.get("google", {}).get("redirect_uri", "https://moreretailaws.streamlit.app/")
                 )
                 
                 # Generate authorization URL
@@ -1169,13 +1169,13 @@ def main():
         
         # Display both configurations
         col1, col2 = st.columns(2)
-    with col1:
-        st.markdown("### 📧 Gmail to Drive Config")
-        display_config("gmail_to_drive", CONFIGS['gmail_to_drive'], "tab3_col1")
-    
-    with col2:
-        st.markdown("### 📄 Drive to Excel Config")
-        display_config("drive_to_sheet", CONFIGS['drive_to_sheet'], "tab3_col2")
+        with col1:
+            st.markdown("### 📧 Gmail to Drive Config")
+            display_config("gmail_to_drive", CONFIGS['gmail_to_drive'], "tab3_col1")
+        
+        with col2:
+            st.markdown("### 📄 Drive to Excel Config")
+            display_config("drive_to_sheet", CONFIGS['drive_to_sheet'], "tab3_col2")
         
         st.markdown("---")
         st.subheader("⚙️ Workflow Parameters")
