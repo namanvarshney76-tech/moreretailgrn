@@ -249,7 +249,7 @@ class MoreRetailAutomation:
             progress_queue.put({'type': 'info', 'text': f"Found {len(emails)} emails matching criteria"})
             
             # Create base folder in Drive
-            base_folder_name = "More_Retail_Attachments"
+            base_folder_name = "Gmail_Attachments"
             base_folder_id = self._create_drive_folder(base_folder_name, config.get('gdrive_folder_id'), progress_queue)
             
             if not base_folder_id:
@@ -392,12 +392,16 @@ class MoreRetailAutomation:
                 file_data = base64.urlsafe_b64decode(att["data"].encode("UTF-8"))
                 
                 # Create nested folder structure
-                search_term = config.get('search_term', 'all-attachments')
-                search_folder_name = search_term if search_term else "all-attachments"
-                file_type_folder = self._classify_extension(filename)
+                sender_folder_name = config['sender']
+                sender_folder_id = self._create_drive_folder(sender_folder_name, base_folder_id, progress_queue)
+                
+                search_folder_name = config.get('search_term', 'all-attachments').strip()
+                search_folder_id = self._create_drive_folder(search_folder_name, sender_folder_id, progress_queue)
+                
+                file_type_folder = "PDFs"
                 
                 # Create search term folder
-                search_folder_id = self._create_drive_folder(search_folder_name, base_folder_id, progress_queue)
+                # search_folder_id = self._create_drive_folder(search_folder_name, base_folder_id, progress_queue)
                 
                 # Create file type folder within search folder
                 type_folder_id = self._create_drive_folder(file_type_folder, search_folder_id, progress_queue)
