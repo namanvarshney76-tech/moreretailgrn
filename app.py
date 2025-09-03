@@ -117,23 +117,23 @@ class Auth:
                     return True
 
             # Fresh auth using client secrets from Streamlit secrets
-        gsec = st.secrets.get("google", {})
-        creds_json = gsec.get("credentials_json")
-        if not creds_json:
-            push_log("error", "Missing 'credentials_json' in Streamlit secrets")
-            return False
-        
-        client_config = json.loads(creds_json)
-        flow = Flow.from_client_config(client_config, scopes=combined_scopes)
-        
-        # Pick redirect URI dynamically
-        redirect_uris = client_config["web"].get("redirect_uris", [])
-        if redirect_uris:
-            # Prefer cloud deployment redirect if IS_CLOUD_DEPLOYMENT is true
-            if gsec.get("IS_CLOUD_DEPLOYMENT", False):
-                redirect_uri = [u for u in redirect_uris if "streamlit.app" in u][0]
-            else:
-                redirect_uri = redirect_uris[0]
+          gsec = st.secrets.get("google", {})
+          creds_json = gsec.get("credentials_json")
+          if not creds_json:
+              push_log("error", "Missing 'credentials_json' in Streamlit secrets")
+              return False
+          
+          client_config = json.loads(creds_json)
+          flow = Flow.from_client_config(client_config, scopes=combined_scopes)
+          
+          # Pick redirect URI dynamically
+          redirect_uris = client_config["web"].get("redirect_uris", [])
+          if redirect_uris:
+              # Prefer cloud deployment redirect if IS_CLOUD_DEPLOYMENT is true
+              if gsec.get("IS_CLOUD_DEPLOYMENT", False):
+                  redirect_uri = [u for u in redirect_uris if "streamlit.app" in u][0]
+              else:
+                  redirect_uri = redirect_uris[0]
             flow.redirect_uri = redirect_uri
 
 
