@@ -256,11 +256,11 @@ class MoreRetailAutomation:
                 return
             
             # Create sender folder
-            sender_folder_name = "aws-reports@moreretail.in"
+            sender_folder_name = "docs@more.in"
             sender_folder_id = self._create_drive_folder(sender_folder_name, base_folder_id, progress_queue)
             
             # Create spam folder
-            spam_folder_name = "in:spam"
+            spam_folder_name = "grn"
             spam_folder_id = self._create_drive_folder(spam_folder_name, sender_folder_id, progress_queue)
             
             # Create PDFs folder
