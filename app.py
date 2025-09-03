@@ -121,7 +121,7 @@ class MoreRetailAutomation:
                 flow = Flow.from_client_config(
                     client_config=creds_data,
                     scopes=combined_scopes,
-                    redirect_uri="https://reliancegrn.streamlit.app/"  # Update with your actual URL
+                    redirect_uri="https://moreretailaws.streamlit.app/"  # Update with your actual URL
                 )
                 
                 # Generate authorization URL
