@@ -1,4 +1,8 @@
-
+#!/usr/bin/env python3
+"""
+Streamlit App for More Retail DOC Automation Workflows
+Combines Gmail attachment downloader and PDF processor with real-time tracking
+"""
 import streamlit as st
 import os
 import json
@@ -30,7 +34,7 @@ except ImportError:
 
 # Configure Streamlit page
 st.set_page_config(
-    page_title="More Retail AWS Automation",
+    page_title="More Retail DOC Automation",
     page_icon="⚡",
     layout="wide",
     initial_sidebar_state="expanded"
@@ -168,7 +172,7 @@ class MoreRetailAutomation:
         """Search for emails with attachments"""
         try:
             # Build search query
-            query_parts = ["has:attachment", "in:spam"]
+            query_parts = ["has:attachment"]
             
             if sender:
                 query_parts.append(f'from:"{sender}"')
@@ -464,6 +468,15 @@ class MoreRetailAutomation:
         except:
             return False
     
+    def _find_or_create_folder_path(self, root_id: str, path: List[str], progress_queue: queue.Queue) -> str:
+        """Find or create a nested folder path and return the final folder ID"""
+        current_id = root_id
+        for folder_name in path:
+            current_id = self._create_drive_folder(folder_name, current_id, progress_queue)
+            if not current_id:
+                return ""
+        return current_id
+    
     def process_pdf_workflow(self, config: dict, progress_queue: queue.Queue):
         """Process PDF workflow with LlamaParse"""
         try:
@@ -491,8 +504,16 @@ class MoreRetailAutomation:
             
             progress_queue.put({'type': 'progress', 'value': 40})
             
+            # Get the PDFs folder ID by path
+            path = ["Gmail_Attachments", "docs@more.in", "grn", "PDFs"]
+            folder_id = self._find_or_create_folder_path(config['drive_folder_id'], path, progress_queue)
+            if not folder_id:
+                progress_queue.put({'type': 'error', 'text': "Failed to find or create PDFs folder"})
+                progress_queue.put({'type': 'done', 'result': {'success': False, 'processed': 0}})
+                return
+            
             # List PDF files from Drive
-            pdf_files = self._list_drive_files(config['drive_folder_id'], config['days_back'], progress_queue)
+            pdf_files = self._list_drive_files(folder_id, config['days_back'], progress_queue)
             
             if not pdf_files:
                 progress_queue.put({'type': 'warning', 'text': "No PDF files found in the specified folder"})
@@ -832,7 +853,7 @@ def main():
     
     if 'pdf_config' not in st.session_state:
         st.session_state.pdf_config = {
-            'drive_folder_id': "1C251csI1oOeX_skv7mfqpZB0NbyLLd9d",
+            'drive_folder_id': "1gZoNjdGarwMD5-Ci3uoqjNZZ8bTNyVoy",
             'llama_api_key': "llx-24AFSMgnmsfh4IHIZkyrOvoMepLqhsvvYH5IPMz1mEMPZdEH",
             'llama_agent': "More retail Agent",
             'spreadsheet_id': "16y9DAK2tVHgnZNnPeRoSSPPE2NcspW_qqMF8ZR8OOC0",
@@ -866,7 +887,7 @@ def main():
         gmail_search = st.text_input("Search Term", value=st.session_state.gmail_config['search_term'])
         gmail_days = st.number_input("Days Back", value=st.session_state.gmail_config['days_back'], min_value=1)
         gmail_max = st.number_input("Max Results", value=st.session_state.gmail_config['max_results'], min_value=1)
-        gmail_folder = st.text_input("Google Drive Folder ID", value=st.session_state.gmail_config['gdrive_folder_id'])
+        gmail_folder = st.text_input("Google Drive Root Folder ID", value=st.session_state.gmail_config['gdrive_folder_id'])
         
         gmail_submit = st.form_submit_button("Update Gmail Settings")
         
@@ -878,11 +899,12 @@ def main():
                 'max_results': gmail_max,
                 'gdrive_folder_id': gmail_folder
             }
-            st.success("Gmail settings updated!")
+            st.session_state.pdf_config['drive_folder_id'] = gmail_folder  # Sync PDF root ID
+            st.success("Gmail settings updated! PDF root ID synced.")
     
     with st.sidebar.form("pdf_config_form"):
         st.subheader("PDF Processing Settings")
-        pdf_folder = st.text_input("PDF Drive Folder ID", value=st.session_state.pdf_config['drive_folder_id'])
+        pdf_folder = st.text_input("PDF Drive Root Folder ID", value=st.session_state.pdf_config['drive_folder_id'], disabled=True)
         pdf_api_key = st.text_input("LlamaParse API Key", value=st.session_state.pdf_config['llama_api_key'], type="password")
         pdf_agent = st.text_input("LlamaParse Agent", value=st.session_state.pdf_config['llama_agent'])
         pdf_sheet_id = st.text_input("Spreadsheet ID", value=st.session_state.pdf_config['spreadsheet_id'])
