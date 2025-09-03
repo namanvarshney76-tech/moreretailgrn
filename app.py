@@ -910,16 +910,16 @@ def authenticate_user():
     st.subheader("🔐 Authentication")
     
     # Check if credentials are available in secrets
-    if 'google_credentials' not in st.secrets:
+    if "google" not in st.secrets or "credentials_json" not in st.secrets["google"]:
         st.error("Google credentials not found in Streamlit secrets. Please add your credentials.json content to secrets.")
-        st.info("Go to Streamlit Cloud dashboard > App settings > Secrets and add your Google credentials JSON content under 'google_credentials' key.")
+        st.info("Go to Streamlit Cloud dashboard > App settings > Secrets and add your Google credentials JSON content under the [google] section with 'credentials_json' key.")
         return False
     
     try:
-        # Create credentials file from secrets
-        credentials_content = st.secrets["google_credentials"]
+        # Load credentials from secrets
+        credentials_content = st.secrets["google"]["credentials_json"]
         with open('credentials.json', 'w') as f:
-            json.dump(dict(credentials_content), f)
+            f.write(credentials_content)  # Write as string, since it's multiline
         
         st.success("✅ Credentials loaded successfully from Streamlit secrets!")
         st.session_state.authenticated = True
