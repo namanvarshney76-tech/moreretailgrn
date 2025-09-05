@@ -147,7 +147,7 @@ class CombinedAutomation:
                 flow = Flow.from_client_config(
                     client_config=creds_data,
                     scopes=combined_scopes,
-                    redirect_uri=st.secrets.get("redirect_uri", "https://mrl-auto-grn.streamlit.app/")
+                    redirect_uri=st.secrets.get("redirect_uri", "https://moreretaildoc.streamlit.app/")
                 )
                 
                 # Generate authorization URL
