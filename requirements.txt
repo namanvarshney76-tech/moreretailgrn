@@ -1,9 +1,29 @@
+# Streamlit and web framework
 streamlit
+
+# Google API libraries
 google-auth
 google-auth-oauthlib
 google-auth-httplib2
 google-api-python-client
+
+# Data processing
 pandas
-requests
-openpyxl
+numpy
+
+# LlamaParse for PDF processing
 llama-cloud-services
+
+# XML processing (for Excel file handling)
+lxml
+openpyxl
+
+# HTTP requests and utilities
+requests
+urllib3
+
+# Date and time handling
+python-dateutil
+
+# Additional utilities
+typing-extensions
