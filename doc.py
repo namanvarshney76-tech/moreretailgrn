@@ -52,7 +52,7 @@ CONFIG = {
         'gdrive_folder_id': '1gZoNjdGarwMD5-Ci3uoqjNZZ8bTNyVoy'
     },
     'pdf': {
-        'llama_api_key': 'llx-DkwQuIwq5RVZk247W0r5WCdywejPI5CybuTDJgAUUcZKNq0A',
+        'llama_api_key': 'llx-CXILSN7zQPaaSxBWlwYbxs48oaqDsk2GdgHFpNdn2lQqsXUx',
         'llama_agent': 'More retail Agent',
         'drive_folder_id': '1C251csI1oOeX_skv7mfqpZB0NbyLLd9d',
         'spreadsheet_id': '16y9DAK2tVHgnZNnPeRoSSPPE2NcspW_qqMF8ZR8OOC0',
